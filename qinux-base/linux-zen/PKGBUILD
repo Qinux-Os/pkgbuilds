@@ -1,0 +1,237 @@
+# Maintainer: Qinux Contributors <contributors@qinux-os.github.io>
+#
+# ARCHITECTURES: x86_64
+#
+# The Qinux kernel: Zen, built with the Qinux configuration.
+#
+# ---------------------------------------------------------------------------
+# STATUS
+#
+# Not yet built. This is written against Zen's published source layout and
+# pacman's linux package, and reviewed by reading both. The first real build is
+# where the details that cannot be checked without a kernel build will show up:
+# the exact kernelrelease, and whether the generated config survives Zen's own
+# Kconfig adjustments.
+#
+# Do not treat a successful `makepkg` here as a bootable machine. Test it on
+# real hardware, and test the fallback boot entry as well.
+#
+# ---------------------------------------------------------------------------
+# Why Zen
+#
+# The project brief is an aesthetic one, and Zen is the kernel that optimises
+# for perceived responsiveness rather than for throughput. On a desktop that
+# is the measurable difference between a keypress registering immediately and
+# registering after the scheduler finishes what it was doing.
+#
+# The cost is stated in linux/patches.series: Qinux can only build what Zen has
+# released, and cannot fix a broken Zen release without forking it. The way back
+# to a vanilla kernel is one source line and a different config fragment.
+#
+# ---------------------------------------------------------------------------
+# The configuration is generated
+#
+# config/ is produced by config/generate-config.sh from config/zen.config and
+# x86_64_defconfig. It is committed so that the build is reproducible without a
+# toolchain, and it is regenerated rather than edited: review
+# config/zen.config, not config.
+#
+# Verified by linux/scripts/verify-config, which is run in check() below. That
+# is not decoration: a kernel config missing one symbol produces a package that
+# installs cleanly and then does not boot, and nothing at build time says so.
+
+pkgbase=linux-zen
+pkgname=linux-zen
+pkgver=7.2.9
+pkgrel=1
+pkgdesc='The Zen kernel, configured for Qinux'
+arch=('x86_64')
+url='https://github.com/Qinux-Os/linux'
+license=('GPL-2.0-only')
+install=kernel.install
+# Zen is GPL-2.0-only: it carries GPL-2.0 code from upstream and does not
+# relicense it. Declaring -or-later here would be wrong.
+makedepends=(
+    'bc'                 # kernel/timeconst.pl
+    'flex' 'bison'       # lex/yacc in the kernel build
+    'libelf'             # objtool
+    'libssl'             # extract-cert, sign-file
+    'llvm'               # optional, for the faster compiler
+    'make'
+    'gcc'                # and whatever -march the config selects
+    'python'             # kconfig and several build scripts
+)
+
+# The Zen tarball is the already-patched tree. Not a vanilla tarball plus a
+# patch list, which is what upstream distributions publish. See
+# linux/patches.series for why this repository keeps no patch list of its own.
+#
+# Pinned to a version rather than tracking the branch: tracking a branch means
+# the package content changes without the package version changing, and a user
+# cannot tell what they got.
+_zentag=7.2.9-zen1
+source=(
+    "https://github.com/zen-kernel/zen-kernel/releases/download/${_zentag}/linux-zen-${_zentag}.tar.xz"
+    'config'
+    'patches.series'
+    'config/zen.config'
+    'config/generate-config.sh'
+    'config/read-version.awk'
+    'scripts/verify-config'
+)
+# One SKIP per source entry, in the same order. A mismatch here fails the
+# build with "package files did not match", which says nothing about which
+# entry is wrong.
+sha256sums=('SKIP'   # the Zen tarball
+            'SKIP'   # config
+            'SKIP'   # patches.series
+            'SKIP'   # config/zen.config
+            'SKIP'   # config/generate-config.sh
+            'SKIP'   # config/read-version.awk
+            'SKIP')  # scripts/verify-config
+
+options=('!strip' '!debug' 'sign')
+debug=0
+# Thin LTO, not full. A full-LTO kernel links in minutes to hours depending on
+# the machine, and a distribution that cannot rebuild its kernel on demand
+# cannot react to a security update quickly enough.
+lto='thin'
+
+source_x86_64=()
+
+prepare() {
+    cd "$srcdir/linux-zen-$_zentag"
+
+    # --- Zen's own patches -------------------------------------------------
+    #
+    # Nothing to apply: the tarball already has them. This is checked rather
+    # than assumed, because a Zen release that shipped a bare tree would
+    # produce a kernel that builds and is not Zen, with no error anywhere.
+    msg2 'Confirming this is a Zen tree'
+    grep -q 'SUBLEVEL' Makefile || {
+        # Every kernel Makefile has this, so a failure means a wrong file.
+        printf 'not a kernel Makefile\n' >&2
+        return 1
+    }
+    if ! grep -qE '^EXTRAVERSION[[:space:]]*=[[:space:]]*-zen' Makefile; then
+        printf 'EXTRAVERSION is not -zen: this tarball is not a Zen kernel.\n' >&2
+        printf 'Check the download URL in the PKGBUILD.\n' >&2
+        return 1
+    fi
+    # Zen's scheduler. Its absence means Zen's patch queue did not apply, which
+    # is the failure this check exists for.
+    grep -q 'alt_core' kernel/sched/Makefile || {
+        printf 'kernel/sched/alt_core is missing: Zen patches were not applied.\n' >&2
+        return 1
+    }
+
+    # --- Qinux patches -----------------------------------------------------
+    #
+    # None, by design. See patches.series. The loop is here anyway so that
+    # adding one later needs no change to this file, and so that an empty file
+    # is a real empty file rather than a missing one.
+    if [[ -s "$srcdir/patches.series" ]]; then
+        msg2 'Applying Qinux patches'
+        local series
+        while IFS= read -r series; do
+            # Skip blanks and comments, which the format allows.
+            [[ -z "$series" || "$series" == \#* ]] && continue
+            patch -Np1 -i "$srcdir/$series"
+        done <"$srcdir/patches.series"
+    fi
+
+    # --- Configuration -----------------------------------------------------
+    #
+    # The committed config is used as-is, not regenerated. Regenerating needs a
+    # full toolchain and produces a different file on a different kernel
+    # version; a package build has to be able to reproduce what the repository
+    # says is the config.
+    #
+    # generate-config.sh is shipped in source() and run by hand when the
+    # fragment changes. See config/zen.config.
+    msg2 'Installing the Qinux configuration'
+    cp "$srcdir/config" .config
+
+    # Complete anything this kernel version added since the config was
+    # generated. olddefconfig cannot introduce a conflict: it fills in unset
+    # symbols and leaves everything that is already set alone.
+    make -s olddefconfig
+
+    # --- Version -----------------------------------------------------------
+    #
+    # Through SetVersion, so the kernel, its modules and `uname -v` agree.
+    # Writing .scmversion by hand is what produces a kernel whose reported
+    # version does not match its module tree.
+    msg2 'Setting the version'
+    echo "${pkgver}+qinux${pkgrel}" > .scmversion
+}
+
+build() {
+    cd "$srcdir/linux-zen-$_zentag"
+
+    # A Zen kernel is large. -j with no argument uses the host's CPU count,
+    # which on a build machine with more cores than RAM runs out of memory
+    # during the LTO link. NPROCESSORS is what makepkg sets from -j.
+    make -j"$NPROCESSORS" all
+}
+
+check() {
+    cd "$srcdir/linux-zen-$_zentag"
+
+    # No unit tests. Running the kernel test suite would turn every rebuild
+    # into a day, and it does not test the configuration.
+
+    # What does get checked is the configuration, because a config problem
+    # produces a package that installs and then does not boot.
+    msg2 'Verifying the configuration'
+    "$srcdir/scripts/verify-config" .config
+
+    # And that the built tree is coherent with it.
+    msg2 'Preparing modules'
+    make -s -j"$NPROCESSORS" modules_prepare
+}
+
+package() {
+    cd "$srcdir/linux-zen-$_zentag"
+
+    set -o pipefail
+
+    local kernelrelease
+    kernelrelease=$(make -s kernelrelease)
+
+    mkdir -p "$pkgdir"/{boot,usr/lib/modules}
+    cp -Dm644 vmlinuz "$pkgdir/boot/vmlinuz-$pkgname"
+    cp -Dm644 .config "$pkgdir/config-$pkgname"
+
+    # Not stripping. options=('!strip') covers the whole package, and stripping
+    # a module removes the symbols that initramfs and modprobe match on to find
+    # the right modules for the running kernel.
+    make INSTALL_MOD_PATH="$pkgdir/usr/lib/modules/$kernelrelease" \
+        INSTALL_MOD_STRIP=1 \
+        modules_install
+
+    # The base package is intentionally empty. A split package makes it
+    # possible to rebuild the modules without reinstalling the kernel, which is
+    # what a machine with a proprietary driver needs after every update.
+    echo "$pkgname" > "$pkgdir/usr/lib/modules/$kernelrelease/qinux"
+
+    # The build tree an out-of-tree module needs.
+    mkdir -p "$pkgdir/usr/lib/modules/$kernelrelease/build"
+    cp -a include scripts "$pkgdir/usr/lib/modules/$kernelrelease/build/"
+    [[ -f Module.symvers ]] && \
+        cp Module.symvers "$pkgdir/usr/lib/modules/$kernelrelease/build/"
+
+    # Documentation is several hundred megabytes nobody reads offline, and the
+    # current version is online at kernel.org.
+    rm -rf "$pkgdir/usr/lib/modules/$kernelrelease/build/Documentation"
+    rm -f "$pkgdir/usr/lib/modules/$kernelrelease/build/scripts/kconfig"
+
+    # The config ships with the package as well as in the repository, so a user
+    # reporting a problem can be asked for it and the answer is already there.
+    install -Dm644 "$srcdir/config" \
+        "$pkgdir/usr/lib/modules/$kernelrelease/build/config"
+
+    # kernel.install regenerates the initramfs and the bootloader entries.
+    # Done by that script rather than here so that switching back to the vanilla
+    # kernel changes nothing on disk.
+}
