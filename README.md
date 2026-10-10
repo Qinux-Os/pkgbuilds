@@ -8,12 +8,13 @@
 # pkgbuilds
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![group](https://img.shields.io/badge/group-Paket%20sistemi-5c6bc0.svg)](https://github.com/Qinux-Os)
-[![license](https://img.shields.io/github/license/Qinux-Os/pkgbuilds.svg)](https://github.com/Qinux-Os/pkgbuilds/blob/main/LICENSE)
+[![Group](https://img.shields.io/badge/group-Paket%20sistemi-5c6bc0.svg)](https://github.com/Qinux-Os)
 
 > Qinux-specific PKGBUILDs and package build recipes.
 
-**Group:** Paket sistemi · **License:** MIT · **Status:** scaffold only, no content yet
+**Group:** Paket sistemi
+**License:** MIT
+**Status:** scaffold only, no content yet
 
 ---
 
@@ -40,7 +41,6 @@ instead of shipping one large monolith.
 
 **Currently empty.** Only the directory skeleton below exists. Add files as the
 component is developed.
-
 ## 2. Repository layout
 
 ```
@@ -72,9 +72,11 @@ Every directory has a single clear purpose. Put a file where it belongs:
 
 Conventions used throughout Qinux:
 
-- Configuration files keep the exact name and path they have on the installed system.
+- Configuration files keep the exact name and path they have on the installed
+  system.
 - Scripts are POSIX shell or Python 3, both with a `#!/usr/bin/env` shebang.
-- Text files use UTF-8, LF line endings and a trailing newline (enforced by `.editorconfig`).
+- Text files use UTF-8, LF line endings and a trailing newline, enforced by
+  `.editorconfig`.
 - Generated or build output never lands in the repository; see `.gitignore`.
 
 ## 4. About Qinux
@@ -115,8 +117,8 @@ Qinux is an aesthetic, modular, open source Linux distribution.
 3. Make your change, keeping to the directory purposes above.
 4. Push and open a pull request against `main`.
 
-By contributing you agree that your work is licensed under the MIT terms that
-cover this repository.
+By contributing you agree that your work is licensed under the MIT terms
+that cover this repository.
 
 ## 7. Status
 
